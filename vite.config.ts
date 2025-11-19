@@ -1,23 +1,30 @@
-import path from 'path';
-import { defineConfig, loadEnv } from 'vite';
-import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import { resolve } from 'path'
 
-export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
-    return {
-      server: {
-        port: 3000,
-        host: '0.0.0.0',
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  base: './', 
+  define: {
+    // Polyfill process.env for compatibility with the Standalone code structure
+    'process.env': {} 
+  },
+  build: {
+    outDir: 'dist',
+    rollupOptions: {
+      input: {
+        // Use dev.html as the entry point for the build instead of the standalone index.html
+        main: resolve(__dirname, 'dev.html')
       },
-      plugins: [react()],
-      define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-      },
-      resolve: {
-        alias: {
-          '@': path.resolve(__dirname, '.'),
-        }
+      output: {
+        entryFileNames: `assets/[name].js`,
+        chunkFileNames: `assets/[name].js`,
+        assetFileNames: `assets/[name].[ext]`
       }
-    };
-});
+    }
+  },
+  server: {
+    open: '/dev.html' // Open the dev file by default
+  }
+})

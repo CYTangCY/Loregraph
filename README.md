@@ -1,4 +1,3 @@
-
 # LoreGraph - Emotional Memory Extension for SillyTavern
 
 LoreGraph is a "Graph Neural Network" style memory visualization tool for SillyTavern. It uses Google Gemini 2.5 Flash to analyze chat logs in real-time, constructing a complex 9-Axis psychological profile of character relationships.
@@ -13,23 +12,30 @@ LoreGraph is a "Graph Neural Network" style memory visualization tool for SillyT
 
 ## Installation
 
-### 1. Prerequisite: Build the App
-Because this extension uses React, it must be built before SillyTavern can use it.
+### Option 1: Quick Install (Recommended for Users)
+You can install this extension directly from the GitHub URL without needing any extra software.
 
-1.  Open a terminal in this folder.
-2.  Run `npm install` to get dependencies.
-3.  Run `npm run build` (or your preferred build command). 
-4.  Ensure the output (index.html and js bundles) is in the root of this extension folder or update `extension.js` `GRAPH_URL` to point to the build folder.
+1.  Open SillyTavern.
+2.  Go to **Extensions** -> **Install Extension**.
+3.  Paste the GitHub URL of this repository.
+4.  Click **Install**.
+5.  **Important:** Navigate to `SillyTavern/public/scripts/extensions/LoreGraph/` and open `config.js`.
+6.  Paste your Google Gemini API Key there.
+7.  Reload SillyTavern.
 
-### 2. Install in SillyTavern
-1.  Navigate to your SillyTavern installation folder: `.../SillyTavern/public/scripts/extensions/`
-2.  Clone or paste this `LoreGraph` folder there.
-3.  Restart SillyTavern.
-4.  Go to **Extensions** -> **Manage Extensions** and ensure `LoreGraph` is enabled.
+### Option 2: Developer Build (For Modders)
+If you want to modify the source code, you can build the project using Node.js.
 
-### 3. Setup API Key
-The extension requires a Google Gemini API Key.
-*   You must set your `API_KEY` in the environment or code (Note: For local extensions, you might need to hardcode it in `services/geminiService.ts` or use a proxy if you cannot set `process.env.API_KEY` in the browser context easily).
+1.  Clone the repository.
+2.  Run `npm install` to install dependencies.
+3.  **Modify files** in the `src/` directory.
+4.  **Run Dev Server:** `npm run dev` (Opens `dev.html` for testing).
+5.  **Build:** `npm run build` (Compiles `dev.html` and `src/` into `dist/`).
+6.  **Preview:** `npm run preview` (Serves the `dist/` folder).
+
+**Note on Architecture:**
+*   `index.html` (Root) is the **Standalone** version. It uses Babel Standalone to compile code in the browser for users who install via URL.
+*   `dev.html` (Root) is the **Developer** version. It links to `src/main.tsx` and is used by Vite.
 
 ## Usage
 

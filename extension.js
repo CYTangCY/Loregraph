@@ -1,13 +1,38 @@
-
 /**
  * LoreGraph - SillyTavern Extension
  * Bridges SillyTavern's event system with the React Graph Visualizer
  */
 
 const EXTENSION_NAME = "LoreGraph";
-// Assuming the built React app is served from the extension directory
-// SillyTavern usually serves extension files relatively
-const GRAPH_URL = "extensions/LoreGraph/index.html"; 
+
+// Robust logic to find the index.html path relative to this script
+const getGraphUrl = () => {
+    // 1. Try to find the script tag that loaded this file
+    const scripts = document.getElementsByTagName('script');
+    let currentScriptPath = '';
+    
+    if (document.currentScript) {
+        currentScriptPath = document.currentScript.src;
+    } else {
+        // Fallback: look for the script ending in extension.js
+        for (let i = 0; i < scripts.length; i++) {
+            if (scripts[i].src && scripts[i].src.includes('LoreGraph/extension.js')) {
+                currentScriptPath = scripts[i].src;
+                break;
+            }
+        }
+    }
+
+    if (currentScriptPath) {
+        // Replace extension.js with index.html
+        return currentScriptPath.replace('extension.js', 'index.html');
+    }
+    
+    // Fallback default
+    return "extensions/LoreGraph/index.html";
+};
+
+const GRAPH_URL = getGraphUrl();
 
 let graphPopup = null;
 let graphFrame = null;
@@ -25,8 +50,7 @@ const UI = {
         content.style.width = '100%';
         content.style.height = '100%';
         
-        // We assume index.html is in the same folder as extension.js after build
-        content.innerHTML = `<iframe id="loregraph-frame" src="${GRAPH_URL}" style="width:100%; height:100%; border:none;"></iframe>`;
+        content.innerHTML = `<iframe id="loregraph-frame" src="${GRAPH_URL}" style="width:100%; height:100%; border:none; background:#0f172a;"></iframe>`;
 
         // Create jQuery Dialog (SillyTavern standard)
         graphPopup = $(content).dialog({
@@ -35,7 +59,7 @@ const UI = {
             height: 700,
             modal: false,
             autoOpen: true,
-            resizeable: true,
+            resizable: true,
             close: () => { /* Handle close */ }
         });
 
@@ -43,8 +67,12 @@ const UI = {
     },
     
     sendToGraph: (type, payload) => {
-        if (graphFrame && graphFrame.contentWindow) {
-            graphFrame.contentWindow.postMessage({ type, payload }, '*');
+        const frame = document.getElementById('loregraph-frame');
+        if (frame && frame.contentWindow) {
+            console.log(`[LoreGraph] Sending ${type} to iframe`);
+            frame.contentWindow.postMessage({ type, payload }, '*');
+        } else {
+            console.warn("[LoreGraph] Iframe not ready");
         }
     }
 };
@@ -53,14 +81,13 @@ const UI = {
 async function onMessageReceived(data) {
     if (!data) return;
     
-    // Only process if the graph is running to save resources? 
-    // Or buffer regardless? React app buffers, so just send it.
-    
     const messageText = data.mes; // The content of the message
     const speaker = data.name; // Character name
 
-    console.log('[LoreGraph] New message detected, sending to engine...');
-    
+    // We assume the graph might be open, try to send.
+    // If it's closed, the buffer inside the iframe (if loaded) might miss it, 
+    // but usually extensions keep state if the iframe isn't destroyed. 
+    // jQuery dialogs usually just hide.
     UI.sendToGraph('NEW_CONTEXT', {
         text: `${speaker}: ${messageText}`,
         timestamp: Date.now()
@@ -75,9 +102,9 @@ function slashCommandHandler(args, value) {
 
 // Initialization
 jQuery(async () => {
+    console.log(`${EXTENSION_NAME} : Initializing...`);
+
     // 1. Register Slash Command
-    // This allows usages in Quick Replies or the "Magic Wand" macro tool
-    // Command: /loregraph
     if (window.SlashCommandParser && window.SlashCommandParser.addCommandObject) {
         window.SlashCommandParser.addCommandObject(
             window.SlashCommandParser.createCommandObject(
@@ -90,20 +117,22 @@ jQuery(async () => {
         );
     }
 
-    // 2. Add button to the Extensions Menu (Fallback)
+    // 2. Add button to the Extensions Menu
     const buttonHtml = `
         <div id="loregraph-button" class="list-group-item flex-container flex-gap-10" title="Open LoreGraph">
             <div class="fa-solid fa-circle-nodes"></div>
             <div>LoreGraph Monitor</div>
         </div>
     `;
-    $('#extensions_settings').append(buttonHtml);
-    $('#loregraph-button').on('click', () => {
-        UI.openGraph();
-    });
+    // Check if already exists to prevent duplicates on reload
+    if ($('#loregraph-button').length === 0) {
+        $('#extensions_settings').append(buttonHtml);
+        $('#loregraph-button').on('click', () => {
+            UI.openGraph();
+        });
+    }
 
     // 3. Auto-Start Listener
-    // Automatically attach listeners when extension loads
     if (window.eventSource) {
         window.eventSource.on(window.event_types.MESSAGE_RECEIVED, onMessageReceived);
         window.eventSource.on(window.event_types.CHAT_CHANGED, () => {
@@ -113,4 +142,7 @@ jQuery(async () => {
     }
     
     console.log(`${EXTENSION_NAME} : Ready. Use /loregraph to open.`);
+    
+    // Auto-open minimized or notify
+    toastr.info("LoreGraph Loaded. Type /loregraph to view.");
 });
