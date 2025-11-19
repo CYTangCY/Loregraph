@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import ForceGraph from './components/ForceGraph';
 import { DetailPanel } from './components/DetailPanel';
@@ -15,6 +16,7 @@ export default function App() {
   const [generatedPrompt, setGeneratedPrompt] = useState('');
   const [godModeText, setGodModeText] = useState('');
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [autoProcess, setAutoProcess] = useState(true); // Dev mode defaults to true
   const bufferRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -26,11 +28,24 @@ export default function App() {
     const handle = (e: MessageEvent) => {
       if (e.data.type === 'NEW_CONTEXT') setMessageBuffer(p => [...p, `[${new Date(e.data.payload.timestamp).toLocaleTimeString()}] ${e.data.payload.text}`]);
       if (e.data.type === 'RESET_GRAPH') { setGraphData(INITIAL_GRAPH); setMessageBuffer([]); }
+      if (e.data.type === 'CONFIG_UPDATE') { 
+          if (e.data.payload.autoProcess !== undefined) setAutoProcess(e.data.payload.autoProcess);
+      }
     };
     window.addEventListener('message', handle); return () => window.removeEventListener('message', handle);
   }, []);
 
   useEffect(() => { if(bufferRef.current) bufferRef.current.scrollTop = bufferRef.current.scrollHeight; }, [messageBuffer]);
+
+  // Auto Process logic
+  useEffect(() => {
+    if (autoProcess && messageBuffer.length > 0 && !isLoading) {
+        const timer = setTimeout(() => {
+            processBlock();
+        }, 1500);
+        return () => clearTimeout(timer);
+    }
+  }, [messageBuffer, autoProcess, isLoading]);
 
   const processBlock = async () => {
      if (!messageBuffer.length && !godModeText) return;
@@ -49,7 +64,10 @@ export default function App() {
         <div className="flex-1 flex flex-col p-4">
           <div ref={bufferRef} className="flex-1 bg-black/40 rounded border border-slate-800 p-3 overflow-y-auto font-mono text-xs space-y-2">{messageBuffer.length ? messageBuffer.map((m, i) => <div key={i} className="p-2 bg-slate-800/30 border-l-2 border-cyan-900">{m}</div>) : <div className="text-center text-slate-600 mt-10">Waiting for data...</div>}</div>
           <div className="mt-4"><label className="text-xs font-bold text-red-400">Director Override</label><textarea value={godModeText} onChange={e => setGodModeText(e.target.value)} placeholder="Force event..." className="w-full h-20 bg-red-950/20 border border-red-900/50 rounded mt-1 p-2 text-xs text-red-200" /></div>
-          <button onClick={processBlock} disabled={isLoading} className="mt-4 w-full py-3 bg-cyan-700 hover:bg-cyan-600 text-white rounded font-bold disabled:opacity-50">{isLoading ? 'Analyzing...' : 'Process Block'}</button>
+          <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+              <input type="checkbox" checked={autoProcess} onChange={e => setAutoProcess(e.target.checked)} /> Auto-Process
+          </div>
+          <button onClick={processBlock} disabled={isLoading} className="mt-2 w-full py-3 bg-cyan-700 hover:bg-cyan-600 text-white rounded font-bold disabled:opacity-50">{isLoading ? 'Analyzing...' : 'Process Block'}</button>
         </div>
         <div className="p-4 border-t border-slate-800"><button onClick={async () => setGeneratedPrompt(await generateSystemPrompt(graphData))} className="w-full py-2 border border-slate-700 text-slate-400 text-xs">Export Memory</button>{generatedPrompt && <textarea readOnly value={generatedPrompt} className="w-full h-20 bg-black/50 text-[10px] mt-2 text-purple-200 p-2" />}</div>
       </div>

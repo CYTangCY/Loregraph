@@ -6,7 +6,8 @@ LoreGraph is a dynamic memory visualization tool for SillyTavern. It uses Google
 ## Features
 1.  **9-Axis Graph**: Visualizes complex relationships.
 2.  **Auto-Injection**: The graph's summary is automatically fed into the AI's system prompt, helping it remember relationships and past events.
-3.  **Toolbar Integration**: Access the graph via the "Magic Wand" or Toolbar.
+3.  **Real-time Analysis**: Updates automatically as you chat.
+4.  **Toolbar Integration**: Access the graph via the "Magic Wand" or Toolbar.
 
 ## Installation
 1.  In SillyTavern, go to **Extensions** -> **Install Extension**.
@@ -18,12 +19,13 @@ LoreGraph is a dynamic memory visualization tool for SillyTavern. It uses Google
 2.  Expand the **LoreGraph** settings panel.
 3.  Enter your **Google Gemini API Key**.
     *   Get one here: [Google AI Studio](https://aistudiocdn.com/)
-4.  Ensure "Auto-Inject Memory" is checked.
+4.  Ensure "Auto-Inject Memory" and "Auto-Process" are checked.
 
 ## Usage
 *   **View Graph**: Click the **Open Graph Monitor** button in settings, or the **Circle Nodes Icon** in the top toolbar.
-*   **Chat**: Just chat normally. The extension will buffer messages.
-*   **Update**: Click "Process" in the Graph window to update the memory model. The new memory will be used in your next reply.
+*   **Chat**: Just chat normally. The extension will analyze messages automatically.
+*   **Monitor**: Watch the graph update in real-time as emotional values change based on the conversation.
+*   **Override**: Use the "Director's Override" text box to force specific relationship changes or guide the AI's interpretation (God Mode).
 
 ## Troubleshooting
 *   **"Failed to load"**: Ensure you are connected to the internet (to load React/Gemini libraries).

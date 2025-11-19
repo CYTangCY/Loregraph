@@ -16,6 +16,7 @@
         apiKey: "",
         model: "gemini-2.5-flash",
         autoInject: true,
+        autoProcess: true, // Default to true for real-time updates
         debugMode: false
     };
     let settings = { ...defaultSettings };
@@ -72,6 +73,13 @@
                         
                         <div class="flex-container">
                              <label class="checkbox_label flex-1">
+                                <input type="checkbox" id="loregraph_autoprocess" ${settings.autoProcess ? "checked" : ""} />
+                                <span>Auto-Process Chat Logs (Real-time)</span>
+                            </label>
+                        </div>
+                        
+                        <div class="flex-container">
+                             <label class="checkbox_label flex-1">
                                 <input type="checkbox" id="loregraph_autoinject" ${settings.autoInject ? "checked" : ""} />
                                 <span>Auto-Inject Memory into Prompt</span>
                             </label>
@@ -101,6 +109,12 @@
                     
                     $('#loregraph_apikey').on('input', (e) => {
                         settings.apiKey = e.target.value;
+                        saveSettings();
+                        sendToGraph('CONFIG_UPDATE', settings);
+                    });
+
+                    $('#loregraph_autoprocess').on('change', (e) => {
+                        settings.autoProcess = e.target.checked;
                         saveSettings();
                         sendToGraph('CONFIG_UPDATE', settings);
                     });
