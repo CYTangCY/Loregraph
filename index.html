@@ -349,6 +349,7 @@
 
         const App = () => {
             const [apiKey, setApiKey] = useState('');
+            const [autoProcess, setAutoProcess] = useState(true);
             const [messageBuffer, setMessageBuffer] = useState([]);
             const [graphData, setGraphData] = useState({ nodes: [{ id: 'user', name: 'User', archetype: 'Protagonist', currentMood: 'Neutral', group: 1 }], links: [] });
             const [isLoading, setIsLoading] = useState(false);
@@ -362,6 +363,9 @@
                 const handle = (e) => {
                     if (e.data.type === 'CONFIG_UPDATE') {
                         setApiKey(e.data.payload.apiKey);
+                        if (e.data.payload.autoProcess !== undefined) {
+                            setAutoProcess(e.data.payload.autoProcess);
+                        }
                     }
                     if (e.data.type === 'NEW_CONTEXT') {
                         setMessageBuffer(p => [...p, e.data.payload.text]);
@@ -384,8 +388,18 @@
                 }
             }, [graphData]);
 
+            // 3. AUTO-PROCESS (DEBOUNCED)
+            useEffect(() => {
+                if (autoProcess && messageBuffer.length > 0 && !isLoading && apiKey) {
+                    const timer = setTimeout(() => {
+                        processBlock();
+                    }, 1500); // 1.5s delay to batch rapid messages
+                    return () => clearTimeout(timer);
+                }
+            }, [messageBuffer, autoProcess, isLoading, apiKey]);
+
             const processBlock = async () => {
-                if (!apiKey) return alert("Please enter API Key in Extension Settings!");
+                if (!apiKey) return; // Silent fail if no key yet
                 if (!messageBuffer.length) return;
                 setIsLoading(true);
                 try {
@@ -413,6 +427,10 @@
                         <div className="flex-1 overflow-y-auto text-xs font-mono mb-2 border border-slate-800 p-2 rounded bg-black/30 scrollbar-thin">
                             {messageBuffer.length === 0 && <div className="text-slate-600 text-center mt-4">No new chat logs.</div>}
                             {messageBuffer.map((m,i) => <div key={i} className="mb-1 border-l-2 border-cyan-700 pl-1">{m}</div>)}
+                        </div>
+                        <div className="mb-2 text-[10px] text-slate-500 flex items-center">
+                            <span className={`w-2 h-2 rounded-full mr-2 ${autoProcess ? 'bg-green-500' : 'bg-slate-600'}`}></span>
+                            {autoProcess ? 'Auto-Processing Active' : 'Manual Mode'}
                         </div>
                         <button onClick={processBlock} disabled={isLoading || messageBuffer.length===0} className="bg-cyan-700 hover:bg-cyan-600 text-white py-2 rounded font-bold disabled:opacity-50 transition-colors">
                             {isLoading ? 'Thinking...' : 'Process'}
