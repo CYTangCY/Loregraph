@@ -1,0 +1,10 @@
+{
+  "display_name": "LoreGraph Emotional Memory",
+  "name": "LoreGraph",
+  "version": "1.0.0",
+  "author": "LoreGraph Dev",
+  "description": "Uses Gemini to track character relationships and emotional history via a Graph Neural Network approach.",
+  "js": "extension.js",
+  "css": "style.css",
+  "loading_order": 100
+}
