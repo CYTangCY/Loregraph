@@ -35,7 +35,7 @@
       }
     </style>
     
-    <!-- Import Map for Standalone Execution -->
+    <!-- Import Map for Standalone Execution - FIXED: Removed Conflicting React 19 -->
     <script type="importmap">
 {
   "imports": {
@@ -51,13 +51,17 @@
     
     <!-- Babel for in-browser compilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Suppress Babel warning -->
+    <script>
+        window.Babel = { disableScriptTags: true }; 
+    </script>
   <link rel="stylesheet" href="/index.css">
 </head>
   <body>
     <div id="loading-overlay">
       <div class="text-cyan-500 font-bold text-xl mb-2">LoreGraph</div>
       <div id="loading-status" class="text-slate-400 text-sm">Waiting for SillyTavern...</div>
-      <div class="text-xs text-slate-600 mt-4">Please set API Key in Extensions Menu</div>
+      <div class="text-xs text-slate-600 mt-4">Set API Key in Extensions Menu &rarr; LoreGraph</div>
     </div>
     <div id="root" class="w-full h-full"></div>
 

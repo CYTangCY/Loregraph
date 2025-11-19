@@ -1,33 +1,37 @@
-
-.loregraph-settings-container {
-    margin-top: 10px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    padding-top: 10px;
-}
-
-.loregraph-settings-container input[type="password"],
-.loregraph-settings-container select {
-    width: 100%;
-    background-color: rgba(0, 0, 0, 0.3);
-    border: 1px solid #444;
-    color: #ccc;
-    padding: 5px;
-    border-radius: 3px;
-}
-
-#loregraph_open_btn {
-    width: 100%;
-    text-align: center;
-    margin-top: 10px;
-}
-
-/* Toolbar Icon */
-.extension_icon {
+/* Settings Panel Header */
+.loregraph_header {
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 10px;
     cursor: pointer;
-    margin: 0 5px;
-    color: #aaa;
-    transition: color 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    margin-bottom: 5px;
+    transition: background-color 0.2s;
 }
-.extension_icon:hover {
+
+.loregraph_header:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.loregraph_header h3 {
+    margin: 0;
+    display: inline-block;
+    font-size: 1.1em;
+    color: #ccc;
+}
+
+/* Magic Wand Menu Item */
+#loregraph_tool_item:hover {
+    background-color: rgba(255, 255, 255, 0.1);
     color: #fff;
+}
+
+.loregraph-menu-link {
+    color: inherit;
+    text-decoration: none;
+    width: 100%;
+    display: block;
 }
