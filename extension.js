@@ -38,10 +38,25 @@
         // Look for existing panel to avoid duplicates
         if ($('#loregraph-settings-panel').length > 0) return;
 
+        // CSS for the collapsible header
         const panelHtml = `
             <div id="loregraph-settings-panel" class="settings_block">
-                <h3>LoreGraph Configuration</h3>
-                <div class="styled_group">
+                <div id="loregraph_header" style="background-color:rgba(0,0,0,0.2); padding: 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-radius: 5px;">
+                    <h3 style="margin:0; display:inline-block;">LoreGraph Configuration</h3>
+                    <span style="opacity:0.6;">▼</span>
+                </div>
+                
+                <div id="loregraph_content" class="styled_group" style="display: none; margin-top: 10px; padding: 10px;">
+                    
+                    <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        <button id="loregraph_open_btn_internal" class="menu_button" style="width: 100%; font-weight: bold; padding: 10px;">
+                            <i class="fa-solid fa-diagram-project"></i> Open Graph Window
+                        </button>
+                        <small style="display:block; text-align:center; margin-top:5px; color:#aaa;">
+                            Click here if the toolbar button is missing.
+                        </small>
+                    </div>
+
                     <label>Google Gemini API Key</label>
                     <input id="loregraph_apikey" type="password" class="text_pole" placeholder="AIzaSy..." value="${settings.apiKey || ''}" />
                     
@@ -67,10 +82,15 @@
         `;
         
         // Append to the settings area
-        // SillyTavern extensions list is dynamic, we try to find our slot
-        // A robust way is to append to the bottom of the container
         container.append(panelHtml);
         
+        // Collapsible Logic
+        $('#loregraph_header').on('click', function() {
+            $('#loregraph_content').slideToggle();
+            const icon = $(this).find('span');
+            icon.text(icon.text() === '▼' ? '▲' : '▼');
+        });
+
         // Event Listeners
         $('#loregraph_save_btn').on('click', () => {
             settings.apiKey = $('#loregraph_apikey').val();
@@ -84,27 +104,38 @@
                 sendToGraph('CONFIG', { apiKey: settings.apiKey });
             }
         });
+
+        // Internal Open Button
+        $('#loregraph_open_btn_internal').on('click', openGraphWindow);
     }
 
     // --- UI: TOOLBAR BUTTON ---
     function addToolbarButton() {
-        // Check for Quick Access Bar or Top Bar
-        // SillyTavern UI structure changes, usually #top-bar or .quick-access
-        // We'll add to the "Magic Wand" area if possible, or just the top bar.
-        
         if ($('#loregraph-toolbar-btn').length > 0) return;
         
         const btnHtml = `
-            <div id="loregraph-toolbar-btn" class="menu_button fa-solid fa-circle-nodes" title="Open LoreGraph" style="cursor: pointer; margin-left: 5px;"></div>
+            <div id="loregraph-toolbar-btn" class="menu_button fa-solid fa-circle-nodes" title="Open LoreGraph" style="cursor: pointer; margin-left: 5px; order: 99;"></div>
         `;
         
-        // Try adding near the extensions button in top bar
-        const target = $('#extensions_button');
+        // Strategy 1: Extensions Button (Top Bar)
+        let target = $('#extensions_button');
+        
+        // Strategy 2: Quick Access Bar (if configured)
+        if (target.length === 0) {
+            target = $('.quick-access-bar'); // Common container class
+        }
+
+        // Strategy 3: Top Bar container
+        if (target.length === 0) {
+            target = $('#top-bar');
+        }
+        
         if (target.length) {
             target.after(btnHtml);
         } else {
-            // Fallback
-            $('body').append(`<div id="loregraph-toolbar-btn" style="position:fixed; top:10px; right:10px; z-index:2000; background:#222; padding:10px; border-radius:50%;" class="fa-solid fa-circle-nodes"></div>`);
+            // Fallback: Fixed Position (Last Resort)
+            console.warn("[LoreGraph] Could not find toolbar. Using floating button.");
+            $('body').append(`<div id="loregraph-toolbar-btn" style="position:fixed; top:50px; right:10px; z-index:2000; background:rgba(0,0,0,0.5); padding:10px; border-radius:50%; border: 1px solid #444;" class="fa-solid fa-circle-nodes" title="Open LoreGraph"></div>`);
         }
         
         $('#loregraph-toolbar-btn').on('click', openGraphWindow);
@@ -114,28 +145,34 @@
     function openGraphWindow() {
         // Create iframe container if not exists
         const iframeUrl = 'extensions/LoreGraph/index.html';
-        
-        // Using SillyTavern's generic popup logic if available, or standard jQuery dialog
-        // We'll use a unique ID to prevent multiples
         const dialogId = 'loregraph-dialog';
         
         if ($('#' + dialogId).length) {
-            $('#' + dialogId).parent().show();
-            $('#' + dialogId).dialog('open');
+            // If utilizing jQuery UI dialog
+            if ($('#' + dialogId).dialog('isOpen') !== true) {
+                $('#' + dialogId).dialog('open');
+            }
+            $('#' + dialogId).parent().show(); // Safety for hidden elements
             return;
         }
         
         const html = `<iframe id="loregraph-frame" src="${iframeUrl}" style="width:100%; height:100%; border:none;"></iframe>`;
         
-        const dialog = $(`<div id="${dialogId}" title="LoreGraph Monitor">${html}</div>`).dialog({
-            width: 1000,
-            height: 700,
+        // Use SillyTavern's global popup/dialog system if possible, otherwise generic jQuery UI
+        // We construct a robust dialog here
+        const dialog = $(`<div id="${dialogId}" title="LoreGraph Monitor" style="overflow:hidden; padding:0;">${html}</div>`).dialog({
+            width: window.innerWidth * 0.8,
+            height: window.innerHeight * 0.8,
             autoOpen: true,
             modal: false,
-            resizeable: true,
+            resizable: true,
+            draggable: true,
+            create: function() {
+                // Make it look like ST window
+                $(this).parent().css({ 'z-index': 2000, 'position': 'fixed' });
+            },
             close: function() {
-                // Just hide, don't destroy so state persists
-                // $(this).dialog('destroy').remove(); 
+                // Just hide logic handled by dialog
             }
         });
         
@@ -152,10 +189,13 @@
     
     // 1. Receive Messages from SillyTavern Chat
     function onChatUpdate(data) {
-        // 'data' usually contains the message object
         if (data && data.mes && graphWindow) {
+            // Determine name (User vs Character)
+            const isUser = data.is_user;
+            const name = isUser ? "User" : (data.name || "Character");
+            
             sendToGraph('NEW_CONTEXT', { 
-                text: `${data.name}: ${data.mes}` 
+                text: `${name}: ${data.mes}` 
             });
         }
     }
@@ -174,45 +214,22 @@
         // Memory Update
         if (data.type === 'LOREGRAPH_EXPORT') {
             currentMemoryBlock = data.summary;
-            console.log('[LoreGraph] Memory Updated:', currentMemoryBlock.length, 'chars');
             if(settings.autoInject) {
-                toastr.info('LoreGraph Memory Updated');
+                // Optional: Toast notification
+                // toastr.info('LoreGraph Memory Updated');
             }
         }
     });
-
-    // --- PROMPT INJECTION (THE MAGIC) ---
-    function injectMemoryIntoPrompt(payload) {
-        if (!settings.autoInject || !currentMemoryBlock) return;
-        
-        // payload is the prompt string or array sent to LLM
-        // We append our memory block to the system prompt or description
-        
-        // SillyTavern Prompt Extensions API usually works by modifying the extension_prompt
-        // Check if 'extension_prompt' exists in payload (depending on ST version API)
-        
-        // Standard ST Hook: "chat_completion_source_prompt_wrapper"
-        // But here we are just a function called by the hook.
-        
-        // Add to the "After Scenario" or "Author's Note" slot conceptually
-        const injection = `\n\n[Relationship Graph State]:\n${currentMemoryBlock}\n`;
-        
-        // If payload is string
-        if (typeof payload === 'string') {
-            return payload + injection;
-        }
-        return payload; // Fallback
-    }
 
     // --- INITIALIZATION ---
     $(document).ready(function() {
         loadSettings();
         
-        // Wait a bit for ST to load extensions UI
+        // Delay UI injection slightly to ensure ST DOM is ready
         setTimeout(() => {
             addSettingsPanel();
             addToolbarButton();
-        }, 2000);
+        }, 1000);
         
         // Register Slash Command
         if (window.SlashCommandParser) {
@@ -220,15 +237,17 @@
                 window.SlashCommandParser.createCommandObject(
                     'loregraph', {
                         function: (args, val) => { openGraphWindow(); return ""; },
-                        helpString: "Open LoreGraph"
+                        helpString: "Open LoreGraph Window"
                     }
                 )
             );
         }
         
-        // Hook Events
+        // Hook Chat Events
         if (window.eventSource) {
+            // New Message
             window.eventSource.on(window.event_types.MESSAGE_RECEIVED, onChatUpdate);
+            // Chat Changed / Cleared
             window.eventSource.on(window.event_types.CHAT_CHANGED, () => {
                 sendToGraph('RESET', {});
             });
@@ -237,14 +256,12 @@
         console.log('[LoreGraph] Loaded.');
     });
     
-    // Register Prompt Hook (SillyTavern Specific)
-    // This part depends heavily on ST version. 
-    // We try to push to the global extension_prompts array if it exists
+    // --- PROMPT INJECTION HOOK ---
+    // This injects the memory into the prompt before it goes to the LLM
     if (window.extension_prompts) {
         window.extension_prompts.push((data) => {
             if(settings.autoInject && currentMemoryBlock) {
-                // Inject into 'after_scenario' or just return text to append
-                return `\n[LoreGraph Memory]\n${currentMemoryBlock}`;
+                return `\n\n[Relationship Graph State]:\n${currentMemoryBlock}`;
             }
             return "";
         });
