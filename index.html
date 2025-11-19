@@ -1,458 +1,322 @@
 <!DOCTYPE html>
-<!-- 
-  LOREGRAPH STANDALONE DISTRIBUTION
-  Running React + Typescript directly in browser via Babel Standalone.
--->
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LoreGraph</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LoreGraph - Emotional Memory</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
     <!-- Polyfill for process.env -->
     <script>
-        // Suppress the "in-browser Babel transformer" warning because it is expected behavior for this extension.
-        (function() {
-            const originalWarn = console.warn;
-            console.warn = function(...args) {
-                if (args[0] && typeof args[0] === 'string' && args[0].includes('You are using the in-browser Babel transformer')) return;
-                originalWarn.apply(console, args);
-            };
-        })();
-
-        window.process = {
-            env: {
-                NODE_ENV: 'production',
-                API_KEY: '' // Will be populated by postMessage
-            }
-        };
+      window.process = { env: { NODE_ENV: 'production' } };
     </script>
-
+    <style>
+      body, html { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #0f172a;
+        color: #e2e8f0;
+      }
+      .font-mono { font-family: 'JetBrains Mono', monospace; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: #1e293b; }
+      ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+      
+      /* Loading Overlay */
+      #loading-overlay {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: #020617; z-index: 9999;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        transition: opacity 0.5s;
+      }
+    </style>
+    
+    <!-- Import Map for Standalone Execution -->
     <script type="importmap">
 {
   "imports": {
     "react": "https://esm.sh/react@18.2.0",
     "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "d3": "https://esm.sh/d3@7.8.5",
-    "@google/genai": "https://esm.sh/@google/genai@0.1.2",
+    "@google/genai": "https://esm.sh/@google/genai@0.1.1",
+    "d3": "https://esm.sh/d3@7.9.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "vite": "https://aistudiocdn.com/vite@^7.2.2",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "path": "https://aistudiocdn.com/path@^0.12.7"
+    "react/": "https://aistudiocdn.com/react@^19.2.0/"
   }
 }
 </script>
+    
+    <!-- Babel for in-browser compilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <style>
-        body, html, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; background-color: #0f172a; color: #e2e8f0; } 
-        .font-mono { font-family: 'JetBrains Mono', monospace; } 
-        ::-webkit-scrollbar { width: 6px; height: 6px; } 
-        ::-webkit-scrollbar-track { background: #1e293b; } 
-        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
-        .cursor-wait { cursor: wait; }
-    </style>
-<link rel="stylesheet" href="/index.css">
+  <link rel="stylesheet" href="/index.css">
 </head>
-<body>
-    <div id="root"></div>
+  <body>
+    <div id="loading-overlay">
+      <div class="text-cyan-500 font-bold text-xl mb-2">LoreGraph</div>
+      <div id="loading-status" class="text-slate-400 text-sm">Waiting for SillyTavern...</div>
+      <div class="text-xs text-slate-600 mt-4">Please set API Key in Extensions Menu</div>
+    </div>
+    <div id="root" class="w-full h-full"></div>
 
-    <!-- CRITICAL: data-type="module" allows imports to work with importmap -->
-    <script type="text/babel" data-type="module" data-presets="react,typescript">
-        import React, { useState, useEffect, useRef } from 'react';
-        import ReactDOM from 'react-dom/client';
-        import * as d3 from 'd3';
-        import { GoogleGenAI } from "@google/genai";
+    <!-- APPLICATION LOGIC -->
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useRef, useMemo } from 'react';
+      import ReactDOM from 'react-dom/client';
+      import { GoogleGenAI } from "@google/genai";
+      import * as d3 from 'd3';
 
-        // ==========================================
-        // 1. CONSTANTS & PHYSICS ENGINE
-        // ==========================================
-        
-        const AXIS_COLORS = {
-            love: '#ec4899', friendship: '#22c55e', kinship: '#14b8a6',
-            trust: '#3b82f6', fear: '#9333ea', respect: '#f59e0b',
-            desire: '#be123c', discipline: '#94a3b8', power: '#7f1d1d', default: '#475569'
-        };
+      // --- CONSTANTS & TYPES ---
+      const AXIS_COLORS = {
+        love: '#ec4899', friendship: '#22c55e', kinship: '#14b8a6',
+        trust: '#3b82f6', fear: '#9333ea', respect: '#f59e0b',
+        desire: '#be123c', discipline: '#94a3b8', power: '#7f1d1d', default: '#475569'
+      };
 
-        const ACTION_LIBRARY = {
-            "ATTACK": { fear: 0.4, power: 0.8, love: -1.0, friendship: -0.8, discipline: 0.2 },
-            "INTIMIDATE": { power: 0.9, fear: 0.5, respect: 0.3, friendship: -0.5 },
-            "BETRAY": { trust: -0.5, desire: 0.2, power: 0.6, kinship: -1.0 },
-            "KISS": { love: 0.9, desire: 0.8, trust: 0.5, fear: -0.2 },
-            "FLIRT": { desire: 0.7, love: 0.3, friendship: 0.4, discipline: -0.2 },
-            "CONFESS_LOVE": { love: 1.0, trust: 0.8, fear: 0.3 },
-            "TRUST_CONFIDE": { trust: 1.0, friendship: 0.7, kinship: 0.6, fear: -0.5 },
-            "MAKE_DEAL": { respect: 0.8, trust: 0.4, power: 0.1, discipline: 0.5 },
-            "ASK_HELP": { trust: 0.8, power: -0.4, friendship: 0.6 },
-            "OBEY_ORDER": { discipline: 1.0, fear: 0.4, respect: 0.6, power: -0.5 },
-            "REBEL": { discipline: -1.0, power: 0.7, fear: -0.3 },
-            "PROTECT": { love: 0.6, kinship: 0.9, discipline: 0.5, fear: 0.2 }
-        };
+      const INITIAL_GRAPH = {
+        nodes: [{ id: 'user', name: 'User', archetype: 'Protagonist', currentMood: 'Neutral', group: 1 }],
+        links: []
+      };
 
-        const STRATEGY_MAPPING = {
-            "HOSTILE": ["ATTACK", "INTIMIDATE", "BETRAY", "REBEL"],
-            "ROMANTIC": ["KISS", "FLIRT", "CONFESS_LOVE", "PROTECT"],
-            "FRIENDLY": ["TRUST_CONFIDE", "ASK_HELP", "PROTECT", "MAKE_DEAL"],
-            "PROFESSIONAL": ["MAKE_DEAL", "OBEY_ORDER", "RESPECT", "ASK_HELP"],
-            "NEUTRAL": ["MAKE_DEAL", "ASK_HELP"],
-            "DOMINANT": ["INTIMIDATE", "OBEY_ORDER", "ATTACK"],
-            "SUBMISSIVE": ["OBEY_ORDER", "ASK_HELP", "TRUST_CONFIDE"]
-        };
+      // --- MATRIX MATH (Physics Engine) ---
+      const ACTION_LIBRARY = {
+        "ATTACK": { fear: 0.4, power: 0.8, love: -1.0 },
+        "KISS": { love: 0.9, desire: 0.8 },
+        "TRUST": { trust: 1.0, friendship: 0.7 },
+        "BETRAY": { trust: -0.8, power: 0.5 }
+      };
+      const dotProduct = (emotions, weights) => {
+        let score = 0;
+        for(let k in emotions) score += (emotions[k]||0) * (weights[k]||0);
+        return score;
+      };
 
-        const dotProduct = (emotions, weights) => {
-            let score = 0;
-            Object.keys(emotions).forEach(key => {
-                score += (emotions[key] || 0) * (weights[key] || 0);
-            });
-            return score;
-        };
-        const clamp = (num, min, max) => Math.min(Math.max(num, min), max);
+      // --- COMPONENTS ---
 
-        const calculateProceduralActions = (emotions, intent, contextScore) => {
-            const availableActionKeys = STRATEGY_MAPPING[intent.toUpperCase()] || STRATEGY_MAPPING["NEUTRAL"];
-            return availableActionKeys.map(actionKey => {
-                const weights = ACTION_LIBRARY[actionKey];
-                if (!weights) return { action: actionKey, probability: 0, formula: "Unknown" };
+      // 1. D3 Force Graph
+      const ForceGraph = ({ data, width, height, onNodeClick, onLinkClick }) => {
+        const svgRef = useRef(null);
+        useEffect(() => {
+          if (!svgRef.current || !data.nodes.length) return;
+          const svg = d3.select(svgRef.current);
+          svg.selectAll("*").remove();
+          
+          const nodes = data.nodes.map(d => ({...d}));
+          const links = data.links.map(d => ({...d}));
 
-                const dotProd = dotProduct(emotions, weights);
-                const diceRoll = Math.floor(Math.random() * 20) + 1;
-                const rawScore = dotProd + contextScore + (diceRoll * 2); 
-                const probability = clamp(Math.round(((rawScore + 150) / 300) * 100), 0, 100);
-                
-                const contributors = Object.entries(weights)
-                    .sort(([,a], [,b]) => Math.abs(b||0) - Math.abs(a||0))
-                    .slice(0, 2)
-                    .map(([k, w]) => `${k.slice(0,3).toUpperCase()}(${w})`).join('+');
+          const simulation = d3.forceSimulation(nodes)
+            .force("link", d3.forceLink(links).id(d => d.id).distance(250))
+            .force("charge", d3.forceManyBody().strength(-500))
+            .force("center", d3.forceCenter(width/2, height/2));
 
-                return { action: actionKey, probability, formula: `[${contributors}] + Ctx(${contextScore}) + d20` };
-            }).sort((a, b) => b.probability - a.probability);
-        };
+          // Markers
+          const defs = svg.append("defs");
+          Object.entries(AXIS_COLORS).forEach(([k, c]) => {
+             defs.append("marker").attr("id", `arrow-${k}`).attr("viewBox", "0 -5 10 10")
+             .attr("refX", 24).attr("refY", 0).attr("markerWidth", 5).attr("markerHeight", 5)
+             .attr("orient", "auto").append("path").attr("d", "M0,-5L10,0L0,5").attr("fill", c);
+          });
 
-        // ==========================================
-        // 2. LOGIC & API
-        // ==========================================
+          const link = svg.append("g").selectAll("path").data(links).join("path")
+            .attr("stroke", d => AXIS_COLORS[d.dominantEmotion] || '#888').attr("stroke-width", 2)
+            .attr("marker-end", d => `url(#arrow-${d.dominantEmotion})`)
+            .attr("fill", "none").attr("cursor", "pointer")
+            .on("click", (e, d) => onLinkClick(data.links.find(l => l.source===d.source.id && l.target===d.target.id)));
 
-        const analyzeStoryBlock = async (textBlock, currentGraph, godModeInstruction, apiKey) => {
-            if (!apiKey) throw new Error("API Key not set in Settings");
+          const node = svg.append("g").selectAll("g").data(nodes).join("g")
+            .attr("cursor", "pointer")
+            .call(d3.drag().on("start", (e,d)=>{if(!e.active)simulation.alphaTarget(0.3).restart();d.fx=d.x;d.fy=d.y})
+            .on("drag", (e,d)=>{d.fx=e.x;d.fy=e.y}).on("end", (e,d)=>{if(!e.active)simulation.alphaTarget(0);d.fx=null;d.fy=null}))
+            .on("click", (e, d) => onNodeClick(data.nodes.find(n => n.id===d.id)));
+
+          node.append("circle").attr("r", 15).attr("fill", "#1e293b").attr("stroke", "#38bdf8").attr("stroke-width", 2);
+          node.append("text").text(d => d.name).attr("y", 25).attr("text-anchor", "middle").attr("fill", "#cbd5e1").style("font-size", "10px");
+
+          simulation.on("tick", () => {
+            link.attr("d", d => `M${d.source.x},${d.source.y}L${d.target.x},${d.target.y}`);
+            node.attr("transform", d => `translate(${d.x},${d.y})`);
+          });
+          
+          return () => simulation.stop();
+        }, [data, width, height]);
+        return <svg ref={svgRef} width={width} height={height} className="w-full h-full" />;
+      };
+
+      // 2. Main App
+      const App = () => {
+        const [apiKey, setApiKey] = useState(null);
+        const [graphData, setGraphData] = useState(INITIAL_GRAPH);
+        const [messageBuffer, setMessageBuffer] = useState([]);
+        const [status, setStatus] = useState("Idle");
+        const [selectedItem, setSelectedItem] = useState(null); // {type: 'node'|'link', data: ...}
+        const [dims, setDims] = useState({ w: 800, h: 600 });
+
+        // Init
+        useEffect(() => {
+          const handleMsg = (e) => {
+             if(e.data.type === 'CONFIG') {
+                 setApiKey(e.data.apiKey);
+                 document.getElementById('loading-overlay').style.display = 'none';
+             }
+             if(e.data.type === 'NEW_CONTEXT') {
+                 setMessageBuffer(prev => [...prev, e.data.text]);
+             }
+             if(e.data.type === 'RESET') {
+                 setGraphData(INITIAL_GRAPH);
+                 setMessageBuffer([]);
+             }
+          };
+          window.addEventListener('message', handleMsg);
+          window.parent.postMessage({ type: 'LOREGRAPH_READY' }, '*'); // Ask ST for config
+          
+          // Responsive sizing
+          const resize = () => setDims({ w: window.innerWidth * 0.7, h: window.innerHeight });
+          window.addEventListener('resize', resize);
+          resize();
+          return () => window.removeEventListener('message', handleMsg);
+        }, []);
+
+        // Auto-Process Logic (Debounce)
+        useEffect(() => {
+            if (messageBuffer.length === 0 || !apiKey) return;
             
-            const ai = new GoogleGenAI({ apiKey: apiKey });
-            const existingCharList = currentGraph.nodes.map(n => `${n.id} (${n.name})`).join(", ");
+            const timer = setTimeout(() => {
+                processData();
+            }, 2000); // Auto-update 2 seconds after last message
+            
+            return () => clearTimeout(timer);
+        }, [messageBuffer, apiKey]);
 
-            const prompt = `
-                LoreGraph Engine.
-                CHARACTERS: [${existingCharList}]
-                INPUT: "${textBlock}"
-                ${godModeInstruction ? `OVERRIDE: "${godModeInstruction}"` : ''}
-                
-                RULES:
-                1. DETECT TONE: 'SERIOUS', 'JOKING', 'SARCASM', or 'DECEPTIVE'.
-                2. Update emotional values (-100 to 100) for Love, Friendship, Kinship, Trust, Fear, Respect, Desire, Discipline, Power.
-                3. Determine strategic intent.
-                4. Output JSON.
-            `;
+        // Gemini Logic
+        const processData = async () => {
+           setStatus("Analyzing...");
+           try {
+             const client = new GoogleGenAI({ apiKey });
+             const text = messageBuffer.join('\n');
+             // Only proceed if valid text
+             if(text.length < 5) return;
 
-            const response = await ai.models.generateContent({
+             const prompt = `
+               Analyze interactions for Graph DB.
+               Current Nodes: ${JSON.stringify(graphData.nodes.map(n=>n.id))}
+               Text: "${text}"
+               Return JSON with:
+               - nodes: [{id, name, archetype, currentMood}]
+               - linkUpdates: [{sourceId, targetId, newEmotions: {love, trust, fear...}, strategicIntent, tone}]
+               Use 9-axis (-100 to 100). Detect TONE (SERIOUS/JOKING).
+             `;
+             
+             const res = await client.models.generateContent({
                 model: "gemini-2.5-flash",
                 contents: prompt,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: "OBJECT",
-                        properties: {
-                            nodes: { type: "ARRAY", items: { type: "OBJECT", properties: { id: { type: "STRING" }, name: { type: "STRING" }, archetype: { type: "STRING" }, currentMood: { type: "STRING" }, group: { type: "INTEGER" }}}},
-                            linkUpdates: { type: "ARRAY", items: { type: "OBJECT", properties: {
-                                sourceId: { type: "STRING" }, targetId: { type: "STRING" },
-                                newEmotions: { type: "OBJECT", properties: { love: { type: "INTEGER" }, friendship: { type: "INTEGER" }, kinship: { type: "INTEGER" }, trust: { type: "INTEGER" }, fear: { type: "INTEGER" }, respect: { type: "INTEGER" }, desire: { type: "INTEGER" }, discipline: { type: "INTEGER" }, power: { type: "INTEGER" }}},
-                                strategicIntent: { type: "STRING" }, historyEvent: { type: "STRING" }, contextScore: { type: "INTEGER" }, tone: { type: "STRING", enum: ['SERIOUS', 'JOKING', 'SARCASM', 'DECEPTIVE'] }
-                            }}}
-                        }
-                    }
+                config: { responseMimeType: "application/json" }
+             });
+             
+             const raw = JSON.parse(res.text);
+             
+             // Merge Logic (simplified for standalone)
+             let nextNodes = [...graphData.nodes];
+             raw.nodes?.forEach(n => {
+                const idx = nextNodes.findIndex(x => x.id === n.id);
+                if(idx>=0) nextNodes[idx] = {...nextNodes[idx], ...n};
+                else nextNodes.push({...n, group: 1});
+             });
+             
+             let nextLinks = [...graphData.links];
+             raw.linkUpdates?.forEach(u => {
+                let link = nextLinks.find(l => l.source === u.sourceId && l.target === u.targetId);
+                let emotions = u.newEmotions;
+                // Dampening
+                if(u.tone === 'JOKING' && link) {
+                    // Average with old values
+                    for(let k in emotions) emotions[k] = (emotions[k] + link.emotions[k]) / 2;
                 }
-            });
-
-            const rawData = JSON.parse(response.text);
-            
-            // MERGE NODES
-            const newNodes = [...currentGraph.nodes];
-            rawData.nodes?.forEach(rawNode => {
-                const idx = newNodes.findIndex(n => n.id === rawNode.id);
-                if (idx >= 0) newNodes[idx] = { ...newNodes[idx], ...rawNode };
-                else newNodes.push(rawNode);
-            });
-
-            // MERGE LINKS
-            let newLinks = [...currentGraph.links];
-            rawData.linkUpdates?.forEach(update => {
-                let existingLink = newLinks.find(l => l.source === update.sourceId && l.target === update.targetId);
-                let finalEmotions = update.newEmotions || {};
                 
-                // Tone dampening
-                let adoption = (update.tone === 'SERIOUS') ? 1.0 : 0.1;
-                if (update.tone === 'DECEPTIVE') adoption = 0.3;
-                
-                if (existingLink) {
-                    Object.keys(finalEmotions).forEach(k => {
-                        const oldV = existingLink.emotions[k] || 0;
-                        const newV = finalEmotions[k] || 0;
-                        finalEmotions[k] = Math.round(oldV + (newV - oldV) * adoption);
-                    });
-                }
+                // Dom Emotion
+                let dom = 'trust'; let max=0;
+                for(let k in emotions) if(Math.abs(emotions[k])>max){max=Math.abs(emotions[k]); dom=k;}
 
-                let maxVal = -1, dominant = 'trust';
-                Object.keys(finalEmotions).forEach(k => { if (Math.abs(finalEmotions[k]) > maxVal) { maxVal = Math.abs(finalEmotions[k]); dominant = k; }});
-
-                // Calculate Procedural Actions (The "Physics")
-                const actions = calculateProceduralActions(finalEmotions, update.strategicIntent, update.contextScore || 0);
-
-                const newLinkData = {
-                    source: update.sourceId, target: update.targetId,
-                    emotions: finalEmotions, dominantEmotion: dominant,
-                    strategicIntent: update.strategicIntent,
-                    potentialActions: actions,
-                    history: existingLink ? [...existingLink.history, {description: update.historyEvent, affectedAxes: finalEmotions, timestamp: new Date().toLocaleTimeString()}] : [{description: update.historyEvent, affectedAxes: finalEmotions, timestamp: new Date().toLocaleTimeString()}]
+                const newLink = {
+                    source: u.sourceId, target: u.targetId,
+                    emotions, dominantEmotion: dom,
+                    strategicIntent: u.strategicIntent,
+                    history: link ? [...link.history, u.strategicIntent] : [u.strategicIntent]
                 };
                 
-                const idx = newLinks.findIndex(l => l.source === update.sourceId && l.target === update.targetId);
-                if (idx >= 0) newLinks[idx] = newLinkData; else newLinks.push(newLinkData);
-            });
-
-            return { nodes: newNodes, links: newLinks };
+                const idx = nextLinks.findIndex(l => l.source === u.sourceId && l.target === u.targetId);
+                if(idx>=0) nextLinks[idx] = newLink;
+                else nextLinks.push(newLink);
+             });
+             
+             const newData = { nodes: nextNodes, links: nextLinks };
+             setGraphData(newData);
+             setMessageBuffer([]);
+             setStatus("Idle");
+             
+             // AUTO-EXPORT TO SILLYTAVERN
+             exportMemory(newData);
+             
+           } catch(e) {
+             console.error(e);
+             setStatus("Error");
+           }
         };
-
-        const generateSystemPrompt = (graph) => {
-           let output = `[LOREGRAPH MEMORY STATE]\n`;
-           graph.nodes.forEach(n => { output += `${n.name}: ${n.currentMood} (${n.archetype})\n`; });
-           graph.links.forEach(l => {
-               output += `${l.source} -> ${l.target} [${l.strategicIntent}]: Dominant ${l.dominantEmotion.toUpperCase()}\n`;
-               const acts = l.potentialActions ? l.potentialActions.slice(0,2).map(a => `${a.action}(${a.probability}%)`).join(", ") : "";
-               if(acts) output += `  Likely Actions: ${acts}\n`;
-               output += `  Values: `;
-               Object.entries(l.emotions).forEach(([k,v]) => { if(Math.abs(v) > 40) output += `${k}: ${v}, `; });
-               output += '\n';
-           });
-           return output;
-        };
-
-        // ==========================================
-        // 3. COMPONENTS
-        // ==========================================
         
-        const ForceGraph = ({ data, width, height, onNodeClick, onLinkClick }) => {
-            const svgRef = useRef(null);
-            useEffect(() => {
-                if (!svgRef.current || !data.nodes.length) return;
-                const svg = d3.select(svgRef.current);
-                svg.selectAll("*").remove();
+        const exportMemory = (data) => {
+            // Generate text summary
+            let summary = "[LoreGraph Memory]\n";
+            data.links.forEach(l => {
+                summary += `${l.source}->${l.target}: ${l.strategicIntent} (Dom: ${l.dominantEmotion})\n`;
+            });
+            // Send to Parent (Extension.js)
+            window.parent.postMessage({ type: 'LOREGRAPH_EXPORT', summary }, '*');
+        };
+
+        return (
+          <div className="flex h-screen bg-slate-950 text-slate-200">
+             {/* Sidebar */}
+             <div className="w-64 bg-slate-900 border-r border-slate-800 p-4 flex flex-col">
+                <h1 className="text-xl font-bold text-cyan-400">LoreGraph</h1>
+                <div className="text-xs text-slate-500 mb-4">v3.0.0 Standalone</div>
                 
-                // Copy data to avoid D3 mutating React state directly
-                const nodes = data.nodes.map(d => ({ ...d }));
-                const links = data.links.map(d => ({ ...d }));
-
-                const sim = d3.forceSimulation(nodes)
-                    .force("link", d3.forceLink(links).id(d => d.id).distance(200))
-                    .force("charge", d3.forceManyBody().strength(-500))
-                    .force("center", d3.forceCenter(width / 2, height / 2))
-                    .force("collide", d3.forceCollide().radius(50));
-
-                // Markers
-                const defs = svg.append("defs");
-                Object.entries(AXIS_COLORS).forEach(([key, color]) => {
-                    defs.append("marker").attr("id", `arrow-${key}`).attr("viewBox", "0 -5 10 10").attr("refX", 25).attr("refY", 0).attr("markerWidth", 4).attr("markerHeight", 4).attr("orient", "auto").append("path").attr("d", "M0,-5L10,0L0,5").attr("fill", color);
-                });
-
-                const link = svg.append("g").selectAll("path").data(links).join("path")
-                    .attr("stroke", d => AXIS_COLORS[d.dominantEmotion] || '#555')
-                    .attr("stroke-width", 2)
-                    .attr("fill", "none")
-                    .attr("marker-end", d => `url(#arrow-${d.dominantEmotion || 'default'})`)
-                    .attr("cursor", "pointer")
-                    .on("click", (e,d) => {
-                         e.stopPropagation();
-                         const orig = data.links.find(l => l.source === d.source.id && l.target === d.target.id);
-                         if(orig) onLinkClick(orig);
-                    });
+                <div className="mb-4">
+                   <div className="text-xs uppercase text-slate-500">Status</div>
+                   <div className={`text-sm font-bold ${status==='Error'?'text-red-400':'text-green-400'}`}>{status}</div>
+                </div>
                 
-                const node = svg.append("g").selectAll("circle").data(nodes).join("circle")
-                    .attr("r", 20).attr("fill", "#1e293b").attr("stroke", d => d3.schemeTableau10[d.group%10] || '#fff').attr("stroke-width", 2)
-                    .attr("cursor", "pointer")
-                    .call(d3.drag().on("start", (e,d)=>{if(!e.active)sim.alphaTarget(0.3).restart();d.fx=d.x;d.fy=d.y}).on("drag",(e,d)=>{d.fx=e.x;d.fy=e.y}).on("end",(e,d)=>{if(!e.active)sim.alphaTarget(0);d.fx=null;d.fy=null}))
-                    .on("click", (e,d) => {
-                        e.stopPropagation();
-                        const orig = data.nodes.find(n => n.id === d.id);
-                        if(orig) onNodeClick(orig);
-                    });
-
-                const label = svg.append("g").selectAll("text").data(nodes).join("text")
-                    .text(d => d.name).attr("font-size", 12).attr("fill", "#fff").attr("text-anchor", "middle").attr("pointer-events", "none");
-
-                sim.on("tick", () => {
-                    link.attr("d", d => `M${d.source.x},${d.source.y}L${d.target.x},${d.target.y}`);
-                    node.attr("cx", d=>d.x).attr("cy", d=>d.y);
-                    label.attr("x", d=>d.x).attr("y", d=>d.y - 25);
-                });
-
-                return () => sim.stop();
-            }, [data, width, height]);
-            return <svg ref={svgRef} width={width} height={height} className="w-full h-full" onClick={() => { onNodeClick(null); onLinkClick(null); }} />;
-        };
-
-        // Simplified Panel for Standalone (Full editing available in Dev build or if needed)
-        const DetailPanel = ({ selectedNode, selectedLink, onClose }) => {
-            if (!selectedNode && !selectedLink) return null;
-            return (
-                <div className="absolute right-0 top-0 bottom-0 w-80 bg-slate-900/95 border-l border-slate-800 p-4 overflow-y-auto shadow-2xl z-20">
-                    <button onClick={onClose} className="absolute top-2 right-2 text-slate-400 hover:text-white">✖</button>
-                    <h2 className="text-xl font-bold text-cyan-400 mb-4">{selectedNode ? selectedNode.name : 'Relationship'}</h2>
-                    
-                    {selectedNode && (
-                        <div className="space-y-2 text-sm">
-                            <div><span className="text-slate-500">Archetype:</span> {selectedNode.archetype}</div>
-                            <div><span className="text-slate-500">Mood:</span> {selectedNode.currentMood}</div>
+                <div className="flex-1 overflow-auto">
+                    {selectedItem ? (
+                        <div className="text-xs space-y-2">
+                           <div className="font-bold text-white">Details</div>
+                           <pre className="bg-black p-2 rounded text-[10px] overflow-x-auto">
+                             {JSON.stringify(selectedItem, null, 2)}
+                           </pre>
                         </div>
-                    )}
-                    
-                    {selectedLink && (
-                        <div className="space-y-4">
-                            <div className="text-center text-sm font-bold bg-slate-800 p-2 rounded">{selectedLink.source} ➔ {selectedLink.target}</div>
-                            <div className="text-xs text-slate-400">Intent: <span className="text-white">{selectedLink.strategicIntent}</span></div>
-                            
-                            <div className="space-y-1">
-                                {Object.entries(selectedLink.emotions).map(([k,v]) => (
-                                    <div key={k} className="flex items-center gap-2">
-                                        <div className="w-20 text-[10px] uppercase text-slate-500">{k}</div>
-                                        <div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
-                                            <div className="h-full" style={{width: `${Math.abs(v)/2}%`, marginLeft: v>=0?'50%':`${50-(Math.abs(v)/2)}%`, backgroundColor: AXIS_COLORS[k]}}></div>
-                                        </div>
-                                        <div className="w-8 text-right text-[10px] font-mono">{v}</div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {selectedLink.potentialActions && (
-                                <div className="mt-4">
-                                    <div className="text-[10px] font-bold text-cyan-400 uppercase mb-2">Forecast</div>
-                                    {selectedLink.potentialActions.map((act,i) => (
-                                        <div key={i} className="mb-2">
-                                            <div className="flex justify-between text-[10px]"><span>{act.action}</span><span>{act.probability}%</span></div>
-                                            <div className="w-full h-1 bg-slate-800"><div className="h-full bg-cyan-500" style={{width:`${act.probability}%`}}></div></div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
+                    ) : <div className="text-xs text-slate-600">Select node/link</div>}
                 </div>
-            );
-        };
-
-        const App = () => {
-            const [apiKey, setApiKey] = useState('');
-            const [autoProcess, setAutoProcess] = useState(true);
-            const [messageBuffer, setMessageBuffer] = useState([]);
-            const [graphData, setGraphData] = useState({ nodes: [{ id: 'user', name: 'User', archetype: 'Protagonist', currentMood: 'Neutral', group: 1 }], links: [] });
-            const [isLoading, setIsLoading] = useState(false);
-            const [dims, setDims] = useState({ w: 800, h: 600 });
-            const [selNode, setSelNode] = useState(null);
-            const [selLink, setSelLink] = useState(null);
-
-            // 1. HANDSHAKE: Request Config from Parent
-            useEffect(() => {
-                window.parent.postMessage({ type: 'REQUEST_CONFIG' }, '*');
-                const handle = (e) => {
-                    if (e.data.type === 'CONFIG_UPDATE') {
-                        setApiKey(e.data.payload.apiKey);
-                        if (e.data.payload.autoProcess !== undefined) {
-                            setAutoProcess(e.data.payload.autoProcess);
-                        }
-                    }
-                    if (e.data.type === 'NEW_CONTEXT') {
-                        setMessageBuffer(p => [...p, e.data.payload.text]);
-                    }
-                    if (e.data.type === 'RESET_GRAPH') {
-                        setGraphData({ nodes: [{ id: 'user', name: 'User', archetype: 'Protagonist', currentMood: 'Neutral', group: 1 }], links: [] });
-                    }
-                };
-                window.addEventListener('message', handle);
-                const r = () => { const el = document.getElementById('graph-c'); if(el) setDims({w: el.clientWidth, h: el.clientHeight}); };
-                window.addEventListener('resize', r); r();
-                return () => window.removeEventListener('message', handle);
-            }, []);
-
-            // 2. AUTO-EXPORT
-            useEffect(() => {
-                if (graphData.links.length > 0) {
-                    const memoryBlock = generateSystemPrompt(graphData);
-                    window.parent.postMessage({ type: 'LOREGRAPH_EXPORT', payload: memoryBlock }, '*');
-                }
-            }, [graphData]);
-
-            // 3. AUTO-PROCESS (DEBOUNCED)
-            useEffect(() => {
-                if (autoProcess && messageBuffer.length > 0 && !isLoading && apiKey) {
-                    const timer = setTimeout(() => {
-                        processBlock();
-                    }, 1500); // 1.5s delay to batch rapid messages
-                    return () => clearTimeout(timer);
-                }
-            }, [messageBuffer, autoProcess, isLoading, apiKey]);
-
-            const processBlock = async () => {
-                if (!apiKey) return; // Silent fail if no key yet
-                if (!messageBuffer.length) return;
-                setIsLoading(true);
-                try {
-                    const newData = await analyzeStoryBlock(messageBuffer.join('\n'), graphData, '', apiKey);
-                    setGraphData(newData);
-                    setMessageBuffer([]);
-                } catch (e) { console.error(e); alert("Analysis Failed: " + e.message); }
-                setIsLoading(false);
-            };
-
-            if (!apiKey) {
-                return <div className="flex items-center justify-center h-full text-slate-500 text-center p-10">
-                    <div>
-                        <h1 className="text-2xl font-bold text-cyan-400 mb-2">LoreGraph</h1>
-                        <p className="mb-4">Waiting for configuration...</p>
-                        <p className="text-sm text-slate-600">Please enter your Google Gemini API Key in the SillyTavern Extensions menu.</p>
-                    </div>
-                </div>;
-            }
-
-            return (
-                <div className="flex h-full bg-slate-950 text-slate-200 font-sans">
-                    <div className="w-64 bg-slate-900 p-4 border-r border-slate-800 flex flex-col z-10">
-                        <h1 className="font-bold text-cyan-400 mb-4">LoreGraph <span className="text-xs text-slate-500">v3.0</span></h1>
-                        <div className="flex-1 overflow-y-auto text-xs font-mono mb-2 border border-slate-800 p-2 rounded bg-black/30 scrollbar-thin">
-                            {messageBuffer.length === 0 && <div className="text-slate-600 text-center mt-4">No new chat logs.</div>}
-                            {messageBuffer.map((m,i) => <div key={i} className="mb-1 border-l-2 border-cyan-700 pl-1">{m}</div>)}
-                        </div>
-                        <div className="mb-2 text-[10px] text-slate-500 flex items-center">
-                            <span className={`w-2 h-2 rounded-full mr-2 ${autoProcess ? 'bg-green-500' : 'bg-slate-600'}`}></span>
-                            {autoProcess ? 'Auto-Processing Active' : 'Manual Mode'}
-                        </div>
-                        <button onClick={processBlock} disabled={isLoading || messageBuffer.length===0} className="bg-cyan-700 hover:bg-cyan-600 text-white py-2 rounded font-bold disabled:opacity-50 transition-colors">
-                            {isLoading ? 'Thinking...' : 'Process'}
-                        </button>
-                    </div>
-                    <div id="graph-c" className="flex-1 relative bg-slate-950">
-                        <ForceGraph 
-                            data={graphData} 
-                            width={dims.w} 
-                            height={dims.h} 
-                            onNodeClick={(n) => { setSelNode(n); setSelLink(null); }}
-                            onLinkClick={(l) => { setSelLink(l); setSelNode(null); }}
-                        />
-                        <DetailPanel selectedNode={selNode} selectedLink={selLink} onClose={() => { setSelNode(null); setSelLink(null); }} />
-                    </div>
+                
+                <div className="mt-auto pt-4 border-t border-slate-800">
+                   <div className="text-[10px] text-slate-500">Auto-Updates enabled</div>
                 </div>
-            );
-        };
+             </div>
+             
+             {/* Graph */}
+             <div className="flex-1 relative" id="graph-area">
+                <ForceGraph 
+                   data={graphData} width={dims.w} height={dims.h} 
+                   onNodeClick={n => setSelectedItem(n)}
+                   onLinkClick={l => setSelectedItem(l)}
+                />
+             </div>
+          </div>
+        );
+      };
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
     </script>
-<script type="module" src="/index.tsx"></script>
+  <script type="module" src="/index.tsx"></script>
 </body>
 </html>
