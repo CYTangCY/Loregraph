@@ -7,9 +7,25 @@
     const EXTENSION_NAME = "LoreGraph";
     const SETTINGS_KEY = "loregraph_settings";
     
-    // Locate the extension folder path dynamically
-    const scriptPath = document.currentScript ? document.currentScript.src : null;
-    const extensionRoot = scriptPath ? scriptPath.substring(0, scriptPath.lastIndexOf('/')) : 'extensions/LoreGraph';
+    // --- PATH DETECTION (Fixes 404 Errors) ---
+    function getExtensionPath() {
+        // 1. Try currentScript
+        if (document.currentScript && document.currentScript.src) {
+            return document.currentScript.src.substring(0, document.currentScript.src.lastIndexOf('/'));
+        }
+        // 2. Search scripts by name
+        const scripts = document.getElementsByTagName('script');
+        for (let i = 0; i < scripts.length; i++) {
+            const src = scripts[i].src;
+            if (src && src.includes('LoreGraph/extension.js')) {
+                return src.substring(0, src.lastIndexOf('/'));
+            }
+        }
+        // 3. Fallback
+        return 'extensions/LoreGraph';
+    }
+    
+    const extensionRoot = getExtensionPath();
     
     // Default Settings
     let settings = {
@@ -19,27 +35,23 @@
     };
     
     // State
-    let currentMemoryBlock = ""; // The latest graph summary
-    let graphWindow = null; // Reference to the popup
+    let currentMemoryBlock = ""; 
+    let graphWindow = null; 
     
-    // --- SETTINGS MANAGEMENT ---
+    // --- SETTINGS ---
     function loadSettings() {
         const stored = localStorage.getItem(SETTINGS_KEY);
-        if (stored) {
-            settings = { ...settings, ...JSON.parse(stored) };
-        }
+        if (stored) settings = { ...settings, ...JSON.parse(stored) };
     }
     
     function saveSettings() {
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     }
     
-    // --- UI: EXTENSIONS MENU (Collapsible) ---
+    // --- UI: EXTENSIONS MENU ---
     function addSettingsPanel() {
         const container = $('#extensions_settings');
         if (container.length === 0) return;
-        
-        // Avoid duplicates
         if ($('#loregraph-settings-panel').length > 0) return;
 
         const panelHtml = `
@@ -50,8 +62,7 @@
                 </div>
                 
                 <div class="loregraph_content" style="display: none; padding: 10px; border: 1px solid rgba(255,255,255,0.1); border-top: none;">
-                    
-                    <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); text-align: center;">
+                    <div style="margin-bottom: 15px; text-align: center;">
                         <div class="menu_button" id="loregraph_open_btn_internal" style="width: 90%; margin: 0 auto;">
                             <i class="fa-solid fa-diagram-project"></i> Open Graph Window
                         </div>
@@ -64,17 +75,13 @@
                     
                     <label>Model</label>
                     <select id="loregraph_model" class="text_pole" style="width:100%;">
-                        <option value="gemini-2.5-flash" ${settings.model === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash (Recommended)</option>
-                        <option value="gemini-1.5-pro" ${settings.model === 'gemini-1.5-pro' ? 'selected' : ''}>Gemini 1.5 Pro</option>
+                        <option value="gemini-2.5-flash" ${settings.model === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash</option>
                     </select>
                     
                     <div style="margin-top:10px; display:flex; align-items:center;">
                         <input id="loregraph_autoinject" type="checkbox" ${settings.autoInject ? 'checked' : ''} />
                         <label for="loregraph_autoinject" style="margin-left:10px;">Auto-Inject Memory into Prompt</label>
                     </div>
-                    <small style="display:block; margin-top:5px; color:#aaa; font-style:italic;">
-                        Automatically adds the relationship summary to the AI's context.
-                    </small>
                     
                     <div style="margin-top:15px; text-align:right;">
                         <div id="loregraph_save_btn" class="menu_button">Save Settings</div>
@@ -86,12 +93,11 @@
         container.append(panelHtml);
     }
     
-    // Event Delegation for Settings UI
+    // Global Event Delegation to prevent detached handlers
     $(document).on('click', '#loregraph-settings-panel .loregraph_header', function() {
         const content = $(this).next('.loregraph_content');
         content.slideToggle(200);
         const icon = $(this).find('.indicator');
-        // Simple toggle visual
         setTimeout(() => icon.text(content.is(':visible') ? '▲' : '▼'), 200);
     });
 
@@ -101,22 +107,15 @@
         settings.autoInject = $('#loregraph_autoinject').is(':checked');
         saveSettings();
         toastr.success('LoreGraph settings saved!');
-        if(graphWindow) {
-            sendToGraph('CONFIG', { apiKey: settings.apiKey });
-        }
+        if(graphWindow) sendToGraph('CONFIG', { apiKey: settings.apiKey });
     });
 
     $(document).on('click', '#loregraph_open_btn_internal', function() {
         openGraphWindow();
     });
 
-
-    // --- UI: MAGIC WAND / TOOLS MENU INJECTION ---
+    // --- UI: MAGIC WAND INJECTION ---
     function addToolsMenuItem() {
-        // We look for the container that holds standard tools. 
-        // Usually identified by ID #extensions_menu or classes containing list items.
-        // We use #token_counter as a reference point since it is standard.
-        
         if ($('#loregraph_tool_item').length > 0) return;
 
         const menuItemHtml = `
@@ -128,67 +127,49 @@
             </li>
         `;
 
-        // Strategy: Find the parent of 'Token Counter' or 'Open Data Bank'
-        // This ensures we are in the correct "Magic Wand" dropdown list
-        let anchor = $('#token_counter').closest('ul') || $('#token_counter').closest('.list-group');
-        
-        if (anchor.length === 0) {
-             anchor = $('#databank_button').closest('ul');
-        }
+        // Find standard tools container (e.g., near Token Counter)
+        let anchor = $('.list-group:has(#token_counter)'); 
+        if (anchor.length === 0) anchor = $('#extensions_menu .list-group');
+        if (anchor.length === 0) anchor = $('.list-group').first();
 
         if (anchor.length > 0) {
             anchor.append(menuItemHtml);
-            
-            // Bind click
             $('#loregraph_tool_item').on('click', function() {
-                // Close the dropdown if possible (ST usually handles this, but just in case)
-                // $(this).closest('.dropdown-menu').removeClass('show'); 
                 openGraphWindow();
             });
         } else {
-            console.warn("[LoreGraph] Could not find Magic Wand menu list. Using fallback toolbar button.");
+            console.warn("[LoreGraph] Tools menu not found. Using fallback.");
             addFallbackToolbarButton();
         }
     }
-    
+
     function addFallbackToolbarButton() {
         if ($('#loregraph-toolbar-btn').length > 0) return;
-        const btnHtml = `
-            <div id="loregraph-toolbar-btn" class="menu_button fa-solid fa-circle-nodes" title="Open LoreGraph" style="cursor: pointer; margin-left: 5px;"></div>
-        `;
-        // Try adding to top bar if Magic Wand fails
         const topBar = $('#top-bar') || $('.quick-access-bar');
         if (topBar.length) {
-            topBar.append(btnHtml);
+            topBar.append(`<div id="loregraph-toolbar-btn" class="menu_button fa-solid fa-circle-nodes" title="Open LoreGraph" style="cursor: pointer; margin-left: 5px;"></div>`);
             $('#loregraph-toolbar-btn').on('click', openGraphWindow);
         }
     }
 
     // --- GRAPH WINDOW ---
     function openGraphWindow() {
+        // Use the detected path to avoid 404s
         const iframeUrl = `${extensionRoot}/index.html`;
         const dialogId = 'loregraph-dialog';
         
-        // Check if already open
         if ($('#' + dialogId).length) {
-            if ($('#' + dialogId).dialog('isOpen') !== true) {
-                $('#' + dialogId).dialog('open');
-            }
-            $('#' + dialogId).parent().show();
+            if ($('#' + dialogId).dialog('isOpen') !== true) $('#' + dialogId).dialog('open');
             return;
         }
         
         const html = `<iframe id="loregraph-frame" src="${iframeUrl}" style="width:100%; height:100%; border:none;"></iframe>`;
         
-        // Create Dialog
         $(`<div id="${dialogId}" title="LoreGraph Monitor" style="overflow:hidden; padding:0;">${html}</div>`).dialog({
             width: Math.min(window.innerWidth * 0.9, 1200),
             height: Math.min(window.innerHeight * 0.8, 800),
             autoOpen: true,
-            modal: false,
             resizable: true,
-            draggable: true,
-            closeOnEscape: false,
             create: function() {
                 $(this).parent().css({ 'z-index': 2001, 'position': 'fixed' });
             }
@@ -203,64 +184,47 @@
         }
     }
 
-    // --- MESSAGE HANDLING ---
     function onChatUpdate(data) {
         if (data && data.mes && graphWindow) {
             const isUser = data.is_user;
             const name = isUser ? "User" : (data.name || "Character");
-            sendToGraph('NEW_CONTEXT', { 
-                text: `${name}: ${data.mes}` 
-            });
+            sendToGraph('NEW_CONTEXT', { text: `${name}: ${data.mes}` });
         }
     }
     
     window.addEventListener('message', (event) => {
-        const data = event.data;
-        if (data.type === 'LOREGRAPH_READY') {
-            if(settings.apiKey) {
-                sendToGraph('CONFIG', { apiKey: settings.apiKey });
-            }
+        if (event.data.type === 'LOREGRAPH_READY' && settings.apiKey) {
+            sendToGraph('CONFIG', { apiKey: settings.apiKey });
         }
-        if (data.type === 'LOREGRAPH_EXPORT') {
-            currentMemoryBlock = data.summary;
+        if (event.data.type === 'LOREGRAPH_EXPORT') {
+            currentMemoryBlock = event.data.summary;
         }
     });
 
-    // --- INITIALIZATION ---
     $(document).ready(function() {
         loadSettings();
-        
-        // Wait for UI to settle
         setTimeout(() => {
             addSettingsPanel();
-            addToolsMenuItem(); // Inject into Magic Wand menu
+            addToolsMenuItem();
         }, 2000);
         
-        // Register Slash Command
         if (window.SlashCommandParser) {
             window.SlashCommandParser.addCommandObject(
-                window.SlashCommandParser.createCommandObject(
-                    'loregraph', {
-                        function: (args, val) => { openGraphWindow(); return ""; },
-                        helpString: "Open LoreGraph Window"
-                    }
-                )
+                window.SlashCommandParser.createCommandObject('loregraph', {
+                    function: () => { openGraphWindow(); return ""; },
+                    helpString: "Open LoreGraph Window"
+                })
             );
         }
         
         if (window.eventSource) {
             window.eventSource.on(window.event_types.MESSAGE_RECEIVED, onChatUpdate);
-            window.eventSource.on(window.event_types.CHAT_CHANGED, () => {
-                sendToGraph('RESET', {});
-            });
+            window.eventSource.on(window.event_types.CHAT_CHANGED, () => sendToGraph('RESET', {}));
         }
-        
-        console.log('[LoreGraph] Loaded.');
     });
     
-    // --- PROMPT INJECTION HOOK ---
     if (window.extension_prompts) {
-        window.extension_prompts.push((data) => {
+        window.extension_prompts.push(() => {
             if(settings.autoInject && currentMemoryBlock) {
                 return `\n\n[Relationship Graph State]:\n${currentMemoryBlock}`;
             }

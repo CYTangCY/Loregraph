@@ -1,6 +1,6 @@
 /* Settings Panel Header */
 .loregraph_header {
-    background-color: rgba(0, 0, 0, 0.2);
+    background-color: rgba(0, 0, 0, 0.3);
     padding: 10px;
     cursor: pointer;
     display: flex;
@@ -13,19 +13,31 @@
 }
 
 .loregraph_header:hover {
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
 .loregraph_header h3 {
     margin: 0;
     display: inline-block;
     font-size: 1.1em;
-    color: #ccc;
+    color: #e0e0e0;
 }
 
-/* Magic Wand Menu Item */
+.loregraph_header .indicator {
+    opacity: 0.7;
+    font-size: 0.8em;
+}
+
+/* Magic Wand Menu Item Integration */
+#loregraph_tool_item {
+    cursor: pointer;
+    transition: background-color 0.2s;
+    border-left: 3px solid transparent;
+}
+
 #loregraph_tool_item:hover {
     background-color: rgba(255, 255, 255, 0.1);
+    border-left: 3px solid #4f46e5;
     color: #fff;
 }
 
@@ -33,5 +45,12 @@
     color: inherit;
     text-decoration: none;
     width: 100%;
-    display: block;
+    display: flex;
+    align-items: center;
+    padding: 5px 0;
+}
+
+/* Ensure icon color pops */
+.loregraph-menu-link .fa-circle-nodes {
+    color: #a78bfa; 
 }
