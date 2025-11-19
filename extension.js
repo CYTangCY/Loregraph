@@ -1,148 +1,244 @@
+
 /**
- * LoreGraph - SillyTavern Extension
- * Bridges SillyTavern's event system with the React Graph Visualizer
+ * LoreGraph - Emotional Memory System
+ * SillyTavern Extension Script
  */
 
-const EXTENSION_NAME = "LoreGraph";
-
-// Robust logic to find the index.html path relative to this script
-const getGraphUrl = () => {
-    // 1. Try to find the script tag that loaded this file
-    const scripts = document.getElementsByTagName('script');
-    let currentScriptPath = '';
+(function () {
+    const EXTENSION_NAME = "LoreGraph";
     
-    if (document.currentScript) {
-        currentScriptPath = document.currentScript.src;
-    } else {
-        // Fallback: look for the script ending in extension.js
-        for (let i = 0; i < scripts.length; i++) {
-            if (scripts[i].src && scripts[i].src.includes('LoreGraph/extension.js')) {
-                currentScriptPath = scripts[i].src;
-                break;
+    // Context & State
+    let graphPopup = null;
+    let loreGraphMemory = ""; // The text summary received from the graph
+    
+    // Settings Default
+    const defaultSettings = {
+        apiKey: "",
+        model: "gemini-2.5-flash",
+        autoInject: true,
+        debugMode: false
+    };
+    let settings = { ...defaultSettings };
+
+    // --- 1. UTILITIES ---
+
+    const log = (msg) => {
+        console.log(`[${EXTENSION_NAME}] ${msg}`);
+    };
+
+    const saveSettings = () => {
+        localStorage.setItem(`ST_LoreGraph_Settings`, JSON.stringify(settings));
+    };
+
+    const loadSettings = () => {
+        const stored = localStorage.getItem(`ST_LoreGraph_Settings`);
+        if (stored) {
+            settings = { ...defaultSettings, ...JSON.parse(stored) };
+        }
+    };
+
+    const getGraphUrl = () => {
+        // Robust path finding: Try to find the script tag that loaded this file
+        // If failing, fall back to standard path
+        let path = `extensions/${EXTENSION_NAME}`;
+        
+        if (document.currentScript && document.currentScript.src) {
+            const url = new URL(document.currentScript.src);
+            // Remove filename to get directory
+            path = url.pathname.substring(0, url.pathname.lastIndexOf('/'));
+            // Remove leading slash if needed
+            if (path.startsWith('/')) path = path.substring(1);
+        }
+        return `${path}/index.html`;
+    };
+
+    // --- 2. UI INTEGRATION (Settings & Buttons) ---
+
+    function renderSettings() {
+        const html = `
+        <div class="loregraph-settings-container">
+            <div class="inline-drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>LoreGraph Configuration</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                </div>
+                <div class="inline-drawer-content" style="display: block;">
+                    <div class="flex-container flex-col gap-2">
+                        <label>
+                            <span data-i18n="Google Gemini API Key">Google Gemini API Key</span>
+                            <input type="password" id="loregraph_apikey" class="text_pole" placeholder="AI Studio API Key" value="${settings.apiKey}" />
+                        </label>
+                        <small>Get key from <a href="https://aistudio.google.com/" target="_blank">Google AI Studio</a>. Runs locally in browser.</small>
+                        
+                        <div class="flex-container">
+                             <label class="checkbox_label flex-1">
+                                <input type="checkbox" id="loregraph_autoinject" ${settings.autoInject ? "checked" : ""} />
+                                <span>Auto-Inject Memory into Prompt</span>
+                            </label>
+                        </div>
+                        
+                        <div class="flex-container">
+                            <button id="loregraph_open_btn" class="menu_button primary">
+                                <i class="fa-solid fa-circle-nodes"></i> Open Graph Monitor
+                            </button>
+                        </div>
+                        <div id="loregraph_status" class="text-msg">Status: Ready</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        `;
+
+        // Wait for jQuery and DOM
+        const checkExist = setInterval(() => {
+            if (typeof $ === 'undefined') return;
+            
+            const extensionBlock = $(`.extension_name:contains("${EXTENSION_NAME}")`).closest('.extension_container');
+            if (extensionBlock.length) {
+                clearInterval(checkExist);
+                if (extensionBlock.find('.loregraph-settings-container').length === 0) {
+                    extensionBlock.append(html);
+                    
+                    $('#loregraph_apikey').on('input', (e) => {
+                        settings.apiKey = e.target.value;
+                        saveSettings();
+                        sendToGraph('CONFIG_UPDATE', settings);
+                    });
+
+                    $('#loregraph_autoinject').on('change', (e) => {
+                        settings.autoInject = e.target.checked;
+                        saveSettings();
+                    });
+
+                    $('#loregraph_open_btn').on('click', () => {
+                        UI.openGraph();
+                    });
+                }
             }
+        }, 1000);
+    }
+
+    const UI = {
+        openGraph: () => {
+            if (graphPopup && graphPopup.hasClass('ui-dialog-content') && graphPopup.dialog('isOpen')) {
+                graphPopup.dialog("moveToTop");
+                return;
+            }
+            
+            const graphUrl = getGraphUrl();
+            log("Opening Graph URL: " + graphUrl);
+
+            const content = document.createElement('div');
+            content.id = 'loregraph-container';
+            content.style.width = '100%';
+            content.style.height = '100%';
+            content.innerHTML = `<iframe id="loregraph-frame" src="${graphUrl}" style="width:100%; height:100%; border:none; background:#0f172a;"></iframe>`;
+
+            graphPopup = $(content).dialog({
+                title: 'LoreGraph Monitor',
+                width: 1100,
+                height: 700,
+                modal: false,
+                autoOpen: true,
+                resizable: true,
+                closeOnEscape: false,
+                open: () => {
+                    setTimeout(() => sendToGraph('CONFIG_UPDATE', settings), 1000);
+                }
+            });
+        }
+    };
+
+    function sendToGraph(type, payload) {
+        const frame = document.getElementById('loregraph-frame');
+        if (frame && frame.contentWindow) {
+            frame.contentWindow.postMessage({ type, payload }, '*');
         }
     }
 
-    if (currentScriptPath) {
-        // Replace extension.js with index.html
-        return currentScriptPath.replace('extension.js', 'index.html');
-    }
-    
-    // Fallback default
-    return "extensions/LoreGraph/index.html";
-};
+    // --- 3. TWO-WAY SYNC ---
 
-const GRAPH_URL = getGraphUrl();
+    window.addEventListener('message', (event) => {
+        if (!event.data) return;
 
-let graphPopup = null;
-let graphFrame = null;
+        if (event.data.type === 'LOREGRAPH_EXPORT') {
+            const promptText = event.data.payload;
+            if (promptText && typeof promptText === 'string') {
+                loreGraphMemory = promptText;
+                if (typeof $ !== 'undefined') {
+                    $('#loregraph_status').text(`Memory Updated: ${new Date().toLocaleTimeString()}`);
+                }
+            }
+        }
+        
+        if (event.data.type === 'REQUEST_CONFIG') {
+            sendToGraph('CONFIG_UPDATE', settings);
+        }
+    });
 
-const UI = {
-    openGraph: () => {
-        if (graphPopup) {
-            graphPopup.dialog("open");
+    const onMessageReceived = (data) => {
+        if (!data) return;
+        sendToGraph('NEW_CONTEXT', {
+            text: `${data.name}: ${data.mes}`,
+            timestamp: Date.now()
+        });
+    };
+
+    const hook_prompt = (data) => {
+        if (!settings.autoInject || !loreGraphMemory) return;
+        
+        const injectionText = `\n\n[System Note: The following is a psychological profile and relationship graph of the current characters. Use it to guide their reactions.]\n${loreGraphMemory}\n`;
+
+        // SillyTavern Injection Logic
+        if (Array.isArray(data.chat_completion_prompt)) {
+             const msgs = data.chat_completion_prompt;
+             // Insert as a System message near the end
+             let insertIdx = Math.max(0, msgs.length - 1);
+             msgs.splice(insertIdx, 0, { role: "system", content: injectionText });
+        } 
+        else if (data.final_prompt) {
+            data.final_prompt += injectionText;
+        }
+    };
+
+    // --- 4. INITIALIZATION ---
+
+    const init = () => {
+        if (typeof $ === 'undefined') {
+            setTimeout(init, 500);
             return;
         }
 
-        // Create the container for the visualization
-        const content = document.createElement('div');
-        content.id = 'loregraph-container';
-        content.style.width = '100%';
-        content.style.height = '100%';
-        
-        content.innerHTML = `<iframe id="loregraph-frame" src="${GRAPH_URL}" style="width:100%; height:100%; border:none; background:#0f172a;"></iframe>`;
+        loadSettings();
+        renderSettings();
 
-        // Create jQuery Dialog (SillyTavern standard)
-        graphPopup = $(content).dialog({
-            title: 'LoreGraph - Emotional Network',
-            width: 1000,
-            height: 700,
-            modal: false,
-            autoOpen: true,
-            resizable: true,
-            close: () => { /* Handle close */ }
-        });
-
-        graphFrame = document.getElementById('loregraph-frame');
-    },
-    
-    sendToGraph: (type, payload) => {
-        const frame = document.getElementById('loregraph-frame');
-        if (frame && frame.contentWindow) {
-            console.log(`[LoreGraph] Sending ${type} to iframe`);
-            frame.contentWindow.postMessage({ type, payload }, '*');
-        } else {
-            console.warn("[LoreGraph] Iframe not ready");
+        // Add Toolbar Button
+        const topBar = $('#top-bar-extensions');
+        if (topBar.length) {
+             if ($('#loregraph_toolbar_btn').length === 0) {
+                topBar.append(`
+                    <div class="fa-solid fa-circle-nodes extension_icon" id="loregraph_toolbar_btn" title="LoreGraph"></div>
+                `);
+                $('#loregraph_toolbar_btn').on('click', UI.openGraph);
+             }
         }
-    }
-};
 
-// Hook into SillyTavern's API
-async function onMessageReceived(data) {
-    if (!data) return;
+        // Hooks
+        if (window.eventSource) {
+            window.eventSource.on(window.event_types.MESSAGE_RECEIVED, onMessageReceived);
+            window.eventSource.on(window.event_types.CHAT_CHANGED, () => {
+                 sendToGraph('RESET_GRAPH', {});
+                 loreGraphMemory = "";
+            });
+        }
+        
+        // Injection Hooks
+        $(document).on('chat_completion_source_prompt_ready', function(event, data) { hook_prompt(data); });
+        $(document).on('text_completion_prompt_ready', function(event, data) { hook_prompt(data); });
+
+        log("Loaded.");
+    };
     
-    const messageText = data.mes; // The content of the message
-    const speaker = data.name; // Character name
+    init();
 
-    // We assume the graph might be open, try to send.
-    // If it's closed, the buffer inside the iframe (if loaded) might miss it, 
-    // but usually extensions keep state if the iframe isn't destroyed. 
-    // jQuery dialogs usually just hide.
-    UI.sendToGraph('NEW_CONTEXT', {
-        text: `${speaker}: ${messageText}`,
-        timestamp: Date.now()
-    });
-}
-
-// Slash Command Handler
-function slashCommandHandler(args, value) {
-    UI.openGraph();
-    return ""; // Return empty string to not output to chat
-}
-
-// Initialization
-jQuery(async () => {
-    console.log(`${EXTENSION_NAME} : Initializing...`);
-
-    // 1. Register Slash Command
-    if (window.SlashCommandParser && window.SlashCommandParser.addCommandObject) {
-        window.SlashCommandParser.addCommandObject(
-            window.SlashCommandParser.createCommandObject(
-                'loregraph', 
-                {
-                    helpString: "Opens the LoreGraph Emotional Memory Visualization",
-                    function: slashCommandHandler
-                }
-            )
-        );
-    }
-
-    // 2. Add button to the Extensions Menu
-    const buttonHtml = `
-        <div id="loregraph-button" class="list-group-item flex-container flex-gap-10" title="Open LoreGraph">
-            <div class="fa-solid fa-circle-nodes"></div>
-            <div>LoreGraph Monitor</div>
-        </div>
-    `;
-    // Check if already exists to prevent duplicates on reload
-    if ($('#loregraph-button').length === 0) {
-        $('#extensions_settings').append(buttonHtml);
-        $('#loregraph-button').on('click', () => {
-            UI.openGraph();
-        });
-    }
-
-    // 3. Auto-Start Listener
-    if (window.eventSource) {
-        window.eventSource.on(window.event_types.MESSAGE_RECEIVED, onMessageReceived);
-        window.eventSource.on(window.event_types.CHAT_CHANGED, () => {
-            UI.sendToGraph('RESET_GRAPH', {});
-        });
-        console.log(`${EXTENSION_NAME} : Events Attached.`);
-    }
-    
-    console.log(`${EXTENSION_NAME} : Ready. Use /loregraph to open.`);
-    
-    // Auto-open minimized or notify
-    toastr.info("LoreGraph Loaded. Type /loregraph to view.");
-});
+})();
