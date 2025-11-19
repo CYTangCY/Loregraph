@@ -7,25 +7,24 @@
     const EXTENSION_NAME = "LoreGraph";
     const SETTINGS_KEY = "loregraph_settings";
     
-    // --- PATH DETECTION (Fixes 404 Errors) ---
+    // --- PATH DETECTION (CRITICAL FIX for 404) ---
     function getExtensionPath() {
-        // 1. Try currentScript
-        if (document.currentScript && document.currentScript.src) {
-            return document.currentScript.src.substring(0, document.currentScript.src.lastIndexOf('/'));
-        }
-        // 2. Search scripts by name
+        // Scan all scripts to find the one containing 'extension.js' and 'LoreGraph' in the path
         const scripts = document.getElementsByTagName('script');
         for (let i = 0; i < scripts.length; i++) {
             const src = scripts[i].src;
-            if (src && src.includes('LoreGraph/extension.js')) {
+            if (src && (src.indexOf('LoreGraph') !== -1 || src.indexOf('loregraph') !== -1)) {
+                // Found the script, remove 'extension.js' to get the folder path
+                // Handles 'extensions/LoreGraph/extension.js' or 'extensions/LoreGraph-main/extension.js'
                 return src.substring(0, src.lastIndexOf('/'));
             }
         }
-        // 3. Fallback
+        // Fallback: Try to guess based on standard folder structure
         return 'extensions/LoreGraph';
     }
     
     const extensionRoot = getExtensionPath();
+    console.log('[LoreGraph] Extension Root detected:', extensionRoot);
     
     // Default Settings
     let settings = {
@@ -63,7 +62,7 @@
                 
                 <div class="loregraph_content" style="display: none; padding: 10px; border: 1px solid rgba(255,255,255,0.1); border-top: none;">
                     <div style="margin-bottom: 15px; text-align: center;">
-                        <div class="menu_button" id="loregraph_open_btn_internal" style="width: 90%; margin: 0 auto;">
+                        <div class="menu_button" id="loregraph_open_btn_internal" style="width: 90%; margin: 0 auto; font-weight:bold;">
                             <i class="fa-solid fa-diagram-project"></i> Open Graph Window
                         </div>
                     </div>
@@ -75,7 +74,7 @@
                     
                     <label>Model</label>
                     <select id="loregraph_model" class="text_pole" style="width:100%;">
-                        <option value="gemini-2.5-flash" ${settings.model === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash</option>
+                        <option value="gemini-2.5-flash" ${settings.model === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash (Recommended)</option>
                     </select>
                     
                     <div style="margin-top:10px; display:flex; align-items:center;">
@@ -93,7 +92,7 @@
         container.append(panelHtml);
     }
     
-    // Global Event Delegation to prevent detached handlers
+    // Global Event Delegation
     $(document).on('click', '#loregraph-settings-panel .loregraph_header', function() {
         const content = $(this).next('.loregraph_content');
         content.slideToggle(200);
@@ -127,34 +126,22 @@
             </li>
         `;
 
-        // Find standard tools container (e.g., near Token Counter)
-        let anchor = $('.list-group:has(#token_counter)'); 
-        if (anchor.length === 0) anchor = $('#extensions_menu .list-group');
-        if (anchor.length === 0) anchor = $('.list-group').first();
-
-        if (anchor.length > 0) {
-            anchor.append(menuItemHtml);
-            $('#loregraph_tool_item').on('click', function() {
-                openGraphWindow();
-            });
+        // Try to find the Token Counter to place ourselves next to it
+        let target = $('#token_counter');
+        if (target.length > 0) {
+            target.closest('li').after(menuItemHtml);
         } else {
-            console.warn("[LoreGraph] Tools menu not found. Using fallback.");
-            addFallbackToolbarButton();
+            // Fallback to just appending to the first list group found in extensions menu or tools
+            $('.list-group').first().append(menuItemHtml);
         }
-    }
-
-    function addFallbackToolbarButton() {
-        if ($('#loregraph-toolbar-btn').length > 0) return;
-        const topBar = $('#top-bar') || $('.quick-access-bar');
-        if (topBar.length) {
-            topBar.append(`<div id="loregraph-toolbar-btn" class="menu_button fa-solid fa-circle-nodes" title="Open LoreGraph" style="cursor: pointer; margin-left: 5px;"></div>`);
-            $('#loregraph-toolbar-btn').on('click', openGraphWindow);
-        }
+        
+        $('#loregraph_tool_item').on('click', function() {
+            openGraphWindow();
+        });
     }
 
     // --- GRAPH WINDOW ---
     function openGraphWindow() {
-        // Use the detected path to avoid 404s
         const iframeUrl = `${extensionRoot}/index.html`;
         const dialogId = 'loregraph-dialog';
         
@@ -203,10 +190,11 @@
 
     $(document).ready(function() {
         loadSettings();
+        // Wait for SillyTavern to render extensions list
         setTimeout(() => {
             addSettingsPanel();
             addToolsMenuItem();
-        }, 2000);
+        }, 1500);
         
         if (window.SlashCommandParser) {
             window.SlashCommandParser.addCommandObject(
